@@ -15,6 +15,8 @@ The header is followed by the color palette containing three bytes per color ent
 The palette is followed by a collection of four bytes integers (most significant bit first) representing runs of pixels with an identical color. The twelve upper bits of this integer indicate the index of the run color in the palette entry. The twenty lower bits of the integer indicate the run length. Color indices greater than 0xFF0 are reserved. Color index 0xFFF is used for transparent runs. Each row is represented by a sequence of runs whose lengths add up to the image width. Rows are encoded starting with the top row and progressing toward the bottom row.
 
 # Implementation details:
-Having such a succinct specification leaves some specifics open to interpretation. This implementation makes the following assumptions:
-- Assumes comment lines start with "#" and end with "LF".
-- Both formats state that "the last number is followed by exactly one character which usually is a linefeed character". Assumes that last character is always a whitespace.
+Having such a succinct specification leaves some details open to interpretation. Following the [Netpbm formats](http://netpbm.sourceforge.net/doc/#formats) specifications, this implementation makes the following assumptions:
+- Assumes comment lines start with "#" and end with "LF" or "CR".
+- Assumes comment lines can start in the middle of an item.
+- Since both formats state that "the last number is followed by exactly one character which _usually_ is a linefeed character", assumes _that_ last character is always a whitespace.
+- Assumes the color RLE format also allows runs of length zero.
