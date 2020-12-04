@@ -1,13 +1,18 @@
 # DjVu RLE Image Plugin, for Pillow
-This is a simple decoder for the DjVu RLE image format as defined in the ([DjVuLibre docs](http://djvu.sourceforge.net/doc/man/csepdjvu.html)).
+This is a simple Pillow plugin for the DjVu RLE image format as defined in the ([DjVuLibre docs](http://djvu.sourceforge.net/doc/man/csepdjvu.html)). It is written in pure Python. So far only the decoder has been implemented.
 
 ## Usage
-Simply place DjvuRleImagePlugin.py in your working folder and do `import DjvuRleImagePlugin`. You should now be able to use PIL to open DjVu RLE files: `im = Image.open("Image.rle")`.
+Simply place `DjvuRleImagePlugin.py` where Python can find it and do `import DjvuRleImagePlugin` to register the plugin; then `import PIL`. You should now be able to use PIL to open DjVu RLE files: `im = Image.open("image.djvurle")`.
 
-## Current status
-BETA! I have tested it with some bitonal images generated with the DjVuLibre decoder:
-    `ddjvu -format=rle out.djvu test.djvurle`
-Unfortunately, there is no way to generate color RLE files with the DjVuLibre tools. So I have built some synthetic testing files which also seem to work.
+## Decoder notes
+- The color format doesn't support partial transparency. Pixels can only be fully transparent or not transparent at all. Wherever the decoder finds a transparent pixel, it sets the (R, G, B) values to (0, 0, 0) and the transparency to fully transparent. Everywhere else it's non-transparent.
+
+## Current status: BETA
+The plugin is a WIP. I'm still adding/modifying/bugfixing it.
+
+I have tested it with several bitonal images generated with the DjVuLibre decoder (`ddjvu -format=rle out.djvu test.djvurle`).
+
+There is no way to generate color RLE files with the DjVuLibre tools, so I have used Netpbm's `pbmtodjvurle` and `pamtodjvurle` to generate DjVu RLE images and so far the decoder seems to work fine on those files.
 
 ## Future work
 - Write some tests.
