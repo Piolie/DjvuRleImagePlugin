@@ -36,7 +36,7 @@ def _accept(prefix):
 
 class DjvuRleImageFile(ImageFile.ImageFile):
     """
-    Basic class to handle DjVu RLE.
+    Class to identify DjVu RLE files.
     """
 
     format = "DJVURLE"
@@ -50,45 +50,51 @@ class DjvuRleImageFile(ImageFile.ImageFile):
         def _is_decimal_ascii(c):  # verifies ASCII decimal
             return b"\x2F" < c < b"\x3A"
 
-        def _ignore_line():  # ignores line; line ends with CR or LF
+        def _ignore_line():  # ignores line; line ends with CR _xor_ LF
             while True:
                 c = self.fp.read(1)
-                if c in b"\x0A\x0D":
+                if c == b"":  # reached EOF
+                    raise EOFError("Reached EOF while reading header")
+                if c in b"\r\n":
                     break
 
         while True:  # read until non-whitespace is found
             c = self.fp.read(1)
+            if c == b"":  # reached EOF
+                raise EOFError("Reached EOF while reading header")
+            if _is_decimal_ascii(c):  # found what we were looking for
+                break
             if c == b"#":  # found comment line, ignore it
                 _ignore_line()
                 continue
-            if c not in WHITESPACE:
-                if not _is_decimal_ascii(c):
-                    raise ValueError("Non-decimal-ASCII found in header")
-                break
-            if c == b"":
-                raise ValueError("Reached EOF while reading header")
+            if c in WHITESPACE:  # found whitespace, ignore it
+                continue
+            raise ValueError("Non-decimal-ASCII found in header")
 
         s = s + c
 
         while True:  # read until next whitespace
             c = self.fp.read(1)
+            if _is_decimal_ascii(c):  # append decimal
+                s = s + c
+                continue
             if c in WHITESPACE:  # token ended
                 break
-            if c == b"#":  # found comment line, ignore it
+            if c == b"#":
                 _ignore_line()
                 continue
-            if c == b"":
-                raise ValueError("Reached EOF while reading header")
-            if not _is_decimal_ascii(c):
+            else:
                 raise ValueError("Non-decimal-ASCII found in header")
-            s = s + c
 
         return s
 
     def _open(self):
+        """
+        Load image parameters.
+        """
         # read magic number
         s = self.fp.read(1)
-        if s != b"R":  # redundant? (already have _accept)
+        if s != b"R":  # TODO: redundant? (already have _accept)
             raise ValueError("Not a DJVURLE file")
         magic_number = self._read_token(s)
         self.mode = MODES[magic_number]
@@ -108,7 +114,7 @@ class DjvuRleImageFile(ImageFile.ImageFile):
                     number_of_colors = 0  # bitonal decoder ignores this value
                     break
             elif ix == 2:  # token is the number of colors
-                if token > 0xFF0:  # check palette size
+                if token > 4080:  # check palette size
                     raise ValueError(
                         f"Too many colors: {token}; reduce to 4080 or less"
                     )
@@ -127,10 +133,10 @@ class DjvuRleImageFile(ImageFile.ImageFile):
 
 class DjvuRleDecoder(ImageFile.PyDecoder):
     """
-    Class to decode DjVu RLE.
+    Class to decode DjVu RLE images.
     """
 
-    _pulls_fd = True  # FIXME: experimental; gotta learn how to do it with buffer
+    _pulls_fd = True  # TODO: experimental; gotta learn how to do it with buffer
 
     def decode(self, buffer):
         xsize = self.state.xsize  # row length
@@ -142,19 +148,21 @@ class DjvuRleDecoder(ImageFile.PyDecoder):
         buffer = self.fd  # if using _pulls_fd
 
         def decode_bitonal():
-            BITONAL_MASK = 0b0011111111111111
-            data = bytearray()  # much faster than: data = b""
+            BITONAL_MASK = 0x3FFF
+            data = bytearray()  # much faster than: data = bytes()
 
             total_length = 0
             while total_length < size:
-                white_run = True  # each line starts with a white run
+                is_white_run = True  # each line starts with a white run
                 line_length = 0
                 while line_length < xsize:
                     first_byte = buffer.read(1)
                     if first_byte == b"":
-                        raise ValueError("Reached EOF while reading image data")
-                    if first_byte > b"\xBF":
+                        raise EOFError("Reached EOF while reading image data")
+                    if first_byte > b"\xBF":  # two-byte run
                         second_byte = buffer.read(1)
+                        if second_byte == b"":
+                            raise EOFError("Reached EOF while reading image data")
                         run_length = (
                             int.from_bytes(first_byte + second_byte, byteorder="big")
                             & BITONAL_MASK  # make the two MSBs zero
@@ -167,36 +175,40 @@ class DjvuRleDecoder(ImageFile.PyDecoder):
                         raise ValueError(
                             f"Run too long in line: {total_length//xsize + 1}"
                         )
-                    data += (b"\xFF" * white_run or b"\x00") * run_length
-                    white_run = not white_run
+                    data += (b"\xFF" * is_white_run or b"\x00") * run_length
+                    is_white_run = not is_white_run
                 total_length += line_length
-            if buffer.read(1) != b"":
-                raise ValueError("There are extra data at the end of the file")
+            if buffer.read() != b"":
+                raise EOFError("There are extra data at the end of the file")
             self.set_as_raw(bytes(data), rawmode="1;8")
 
         def decode_rgba():
-            COLOR_MASK = 0b00000000000011111111111111111111
+            COLOR_MASK = 0xFFFFF
             data = bytearray()
 
-            num_of_colors = self.args[0]
-            palette = [b"0000"] * num_of_colors  # initialize palette
-            # TODO: would a dict make it faster?
-            for n in range(num_of_colors):  # load colors in palette
-                palette[n] = buffer.read(3)
+            number_of_colors = self.args[0]
+            palette = {
+                n: b"" for n in range(number_of_colors)
+            }  # initialize palette
+            for n in range(number_of_colors):  # load colors in palette
+                color = buffer.read(3)
+                if len(color) < 3:
+                    raise EOFError("Reached EOF while reading image palette")
+                palette[n] = color
             total_length = 0
             while total_length < size:
                 line_length = 0
                 while line_length < xsize:
                     raw_run = buffer.read(4)
-                    if raw_run == b"":
-                        raise ValueError("Reached EOF while reading image data")
+                    if len(raw_run) < 4:
+                        raise EOFError("Reached EOF while reading image data")
                     run = int.from_bytes(raw_run, byteorder="big")
                     color_index = run >> 20  # upper twelve bits (32 - 20)
                     run_length = run & COLOR_MASK  # lower twenty bits
-                    transparent = color_index == 0xFFF
-                    if color_index > num_of_colors and not transparent:
+                    is_transparent = color_index == 0xFFF
+                    if color_index > number_of_colors and not is_transparent:
                         raise ValueError(
-                            f"Color index greater than 4080 in line {total_length//xsize + 1}"
+                            f"Color index greater than {number_of_colors} in line {total_length//xsize + 1}"
                         )
                     line_length += run_length
                     if line_length > xsize:
@@ -204,10 +216,11 @@ class DjvuRleDecoder(ImageFile.PyDecoder):
                             f"Run too long in line: {total_length//xsize + 1}"
                         )
                     data += (
-                        b"000\x00" * transparent or palette[color_index] + b"\xFF"
+                        b"\x00\x00\x00\x00" * is_transparent
+                        or palette[color_index] + b"\xFF"
                     ) * run_length
                 total_length += line_length
-            if buffer.read(1) != b"":
+            if buffer.read() != b"":
                 raise ValueError("There are extra data at the end of the file")
             self.set_as_raw(bytes(data), rawmode="RGBA")
 
@@ -219,18 +232,6 @@ class DjvuRleDecoder(ImageFile.PyDecoder):
         return -1, 0
 
 
-# class DjvuRleEncoder(ImageFile.PyEncoder):
-#     """
-#     Yet unimplemented encoding class due to lack superclass and documentation.
-#     """
-
-
-def _save(im, fp, filename):
-    """
-    Yet unimplemented saving function due to lack of documentation.
-    """
-
-
 # --------------------------------------------------------------------
 
 
@@ -238,5 +239,3 @@ Image.register_open(DjvuRleImageFile.format, DjvuRleImageFile, _accept)
 Image.register_extensions(DjvuRleImageFile.format, [".rle", ".djvurle"])
 Image.register_mime(DjvuRleImageFile.format, "image/x-djvurle-anymap")
 Image.register_decoder(DjvuRleImageFile.format, DjvuRleDecoder)
-# Image.register_save(DjvuRleImageFile.format, _save)
-# Image.register_encoder(DjvuRleImageFile.format, DjvuRleEncoder)
