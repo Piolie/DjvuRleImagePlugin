@@ -232,6 +232,162 @@ class DjvuRleDecoder(ImageFile.PyDecoder):
         return -1, 0
 
 
+class DjvuRleEncoder:
+    """
+    DjVu RLE encoder class.
+    """
+
+    _pushes_fd = True
+
+    def __init__(self, mode, *args):
+        self.mode = mode
+        self.number_of_colors = b""
+        self.palette = b""
+        self.decoded_data = bytearray()
+
+    @property
+    def pushes_fd(self):
+        return self._pushes_fd
+
+    def setimage(self, im, size):
+        self.im = im
+        self.xsize, self.ysize = size[2:4]
+
+    def setfd(self, fd):
+        self.fd = fd
+
+    def _get_row(self, row_number):
+        return [self.im.getpixel((x, row_number)) for x in range(self.xsize)]
+
+    def _make_bitonal_run(self, run_length):
+        remaining = run_length
+        while remaining > 16383:  # make max-sized runs until we get to the last run
+            self.decoded_data += b"\xFF\xFF\x00"
+            remaining -= 16383
+        if remaining > 191:  # two-byte run
+            first_byte = remaining >> 8 | 0xC0
+            second_byte = remaining & 0xFF
+            self.decoded_data += bytes([first_byte, second_byte])
+        else:  # one-byte run
+            self.decoded_data += bytes([remaining])
+
+    def _encode_bitonal(self):
+        for row_number in range(self.ysize):
+            row = self._get_row(row_number)
+            pos = 0
+            previous_color = 0xFF  # each line starts with a white run
+            while pos < self.xsize:
+                run_length = 0
+                while pos < self.xsize and row[pos] == previous_color:
+                    run_length += 1
+                    pos += 1
+                self._make_bitonal_run(run_length)
+                previous_color ^= 0xFF  # toggle color
+
+    def _make_color_run(self, color, run_length):
+        if len([color]) == 4 and color[3] == 0x00:  # check for transparency
+            # TODO: any transparency value makes a transparent pixel?
+            color_index = 0xFFF
+        else:
+            color_index = self.palette[color]
+        remaining = run_length
+        while remaining > 0xFFFFF:  # make max-sized runs until we get to the last run
+            self.decoded_data += ((color_index << 20) + 0xFFFFF).to_bytes(
+                4, byteorder="big"
+            )
+            remaining -= 0xFFFFF
+        self.decoded_data += ((color_index << 20) + remaining).to_bytes(
+            4, byteorder="big"
+        )
+
+    def _encode_color(self):
+        for row_number in range(self.ysize):
+            row = self._get_row(row_number)
+            pos = 0
+            previous_color = row[pos]
+            while pos < self.xsize:
+                run_length = 0
+                while pos < self.xsize:  # measure run length
+                    if row[pos] == previous_color:
+                        run_length += 1
+                        pos += 1
+                    else:  # color changed; run ends
+                        self._make_color_run(previous_color, run_length)
+                        previous_color = row[pos]  # update color
+                        break
+                else:
+                    self._make_color_run(previous_color, run_length)  # make last run
+
+    def _make_palette(self):
+        if self.mode in ("L", "P"):  # inspired by Image.getcolors
+            # The histogram gives an ordered list of color frequencies.
+            # if h == [0, 2, 6, ...] it means there are:
+            # - 0 pixels of color 0;
+            # - 2 pixels of color 1;
+            # - 6 pixels of color 2; (etc.)
+            # For "L" (grayscale) images, color 0 is black and color 255 is white,
+            # so there is a one-to-one correspondence between the index
+            # in the histogram and the gray value it corresponds to.
+            # For "P" (paletted) images, colors _are_ indices.
+            h = self.im.histogram()
+            colors = [color_index for (color_index, _) in enumerate(h) if _]
+        else:
+            fetch_colors = self.im.getcolors(4080)
+            if fetch_colors:
+                colors = [values for (_, values) in fetch_colors]
+            else:
+                raise ValueError(f"Image contains more than 4080 colors")
+        self.palette = {color: index for (index, color) in enumerate(colors)}
+        # self.palette = dict(zip(colors, range(len(colors))))  # TODO: faster alternative?
+        self.number_of_colors = ("%d\n" % len(colors)).encode("ascii")
+
+    def encode_to_pyfd(self):
+        if self.mode == "1":
+            self._encode_bitonal()
+        elif self.mode == "L":
+            self._make_palette()
+            self._encode_color()
+            self.palette = b"".join(
+                bytes([color]) * 3 for color in self.palette.keys()
+            )  # convert the palette (dict) into a bytes object that can be written
+        elif self.mode == "P":
+            self._make_palette()
+            self._encode_color()
+            self.palette = self.im.getpalette()
+        elif self.mode == "RGB":
+            self._make_palette()
+            self._encode_color()
+            self.palette = b"".join(
+                bytes([r, g, b]) for (r, g, b) in self.palette.keys()
+            )
+        elif self.mode == "RGBA":
+            self._make_palette()
+            self._encode_color()
+            self.palette = b"".join(
+                bytes([r, g, b]) for (r, g, b, _) in self.palette.keys()
+            )
+
+        self.fd.write(self.number_of_colors)
+        self.fd.write(self.palette)
+        self.fd.write(self.decoded_data)
+        return 0, 0
+
+    def cleanup(self):
+        pass
+
+
+def _save(im, fp, filename):
+    if im.mode == "1":
+        magic_number = b"R4"
+    elif im.mode in ("L", "P", "RGB", "RGBA"):
+        magic_number = b"R6"
+    else:
+        raise OSError(f"Cannot write mode {im.mode} as DJVURLE")
+    fp.write(magic_number)
+    fp.write(("\n%d %d\n" % im.size).encode("ascii"))
+    ImageFile._save(im, fp, [("DJVURLE", (0, 0) + im.size, 0, (im.mode))])
+
+
 # --------------------------------------------------------------------
 
 
@@ -239,3 +395,5 @@ Image.register_open(DjvuRleImageFile.format, DjvuRleImageFile, _accept)
 Image.register_extensions(DjvuRleImageFile.format, [".rle", ".djvurle"])
 Image.register_mime(DjvuRleImageFile.format, "image/x-djvurle-anymap")
 Image.register_decoder(DjvuRleImageFile.format, DjvuRleDecoder)
+Image.register_encoder(DjvuRleImageFile.format, DjvuRleEncoder)
+Image.register_save(DjvuRleImageFile.format, _save)
