@@ -18,7 +18,7 @@ The plugin is a WIP. I'm still adding/modifying/bugfixing it.
 
 I have tested the decoder with several bitonal images generated with the DjVuLibre decoder (`ddjvu -format=rle out.djvu test.djvurle`). There is no way to generate color RLE files with the DjVuLibre tools, so I have used Netpbm's `pbmtodjvurle` and `pamtodjvurle` to generate DjVu RLE images and so far the decoder seems to work fine on those files.
 
-The encoder seems able to handle Pillow all image modes
+The encoder seems to handle all Pillow image modes mentioned above quite well.
 
 ## Future work
 - Profile and optimize.
