@@ -11,6 +11,7 @@ Simply place `DjvuRleImagePlugin.py` where Python can find it and do `import Djv
 There is no documentation in Pillow's docs as to how implement an encoder in Python. The base class from which all encoder classes should inherit is not even implemented yet (see [#4059: PyEncoder doesn't exist](https://github.com/python-pillow/Pillow/issues/4059)). So I checked Pillow's source code files (especially [`ImageFile._save`](https://github.com/python-pillow/Pillow/blob/252c008ec6925aa6d3a523aeb85e53c72ec33189/src/PIL/ImageFile.py#L488)) to figure out what such a class would need. Apart from the setup methods (`__init__`, `setimage`, `setfd`, etc.) `encode_to_pyfd` is the one that does the heavy lifting. It works, but the code is probably very fragile.
 
 - Pillow image modes "1", "L", "P", "RGB" and "RGBA" are supported, as long as no more than 4080 colors are used (format limitation).
+- Only full transparent pixels are made transparent. In partially transparent pixels the transparency value is ignored.
 - Currently, there is no way of telling the encoder how to handle color indices greater than 0xFF0 ("reserved for pixels belonging to the background layer" and "used for don't-care runs") as mentioned in the format's [complementary specification](DJVURLE_specification.md#color-rle-images). The only exception is index 0xFFF, used for transparent runs.
 
 ## Current status: BETA

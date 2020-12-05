@@ -23,7 +23,7 @@ Having such a succinct specification leaves some details open to interpretation.
 
 # Complementary specifications
 
-The following complementary definitions can be found in the DjVuLibre source code files ([GBitmap.h](https://sourceforge.net/p/djvu/djvulibre-git/ci/master/tree/libdjvu/GBitmap.h), [csepdjvu.cpp](https://sourceforge.net/p/djvu/djvulibre-git/ci/master/tree/tools/csepdjvu.cpp)). They basically state the same, and I include them here for reference.
+The following complementary definitions can be found in the DjVuLibre source code files ([GBitmap.h](https://sourceforge.net/p/djvu/djvulibre-git/ci/master/tree/libdjvu/GBitmap.h), [csepdjvu.cpp](https://sourceforge.net/p/djvu/djvulibre-git/ci/master/tree/tools/csepdjvu.cpp)). They basically state the same, and are included here for reference.
 
 ## RLE
 The binary RLE file format is a simple run-length encoding scheme for storing bilevel images. Encoding or decoding a RLE encoded file is extremely simple. Yet RLE encoded files are usually much smaller than the corresponding PBM encoded files. RLE files always begin with a header line composed of:
