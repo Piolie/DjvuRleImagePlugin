@@ -5,7 +5,8 @@
 # DjVu RLE support for Pillow
 #
 # History:
-#       2020-11-18     Created
+#       2020-11-18     Created; decoder implemented.
+#       2020-12-05     Encoder implemented
 #
 # Copyright (c) Piolie.
 #
@@ -13,7 +14,8 @@
 #
 
 """
-A Pillow plugin to handle RLE encoded images as specified in the DjVuLibre docs.
+A Pillow plugin to decode and encode DjVu RLE images
+as specified in the DjVuLibre docs.
 """
 
 # from io import BytesIO
@@ -149,7 +151,7 @@ class DjvuRleDecoder(ImageFile.PyDecoder):
 
         def decode_bitonal():
             BITONAL_MASK = 0x3FFF
-            data = bytearray()  # much faster than: data = bytes()
+            decoded_data = bytearray()  # much faster than: data = bytes()
 
             total_length = 0
             while total_length < size:
@@ -175,16 +177,16 @@ class DjvuRleDecoder(ImageFile.PyDecoder):
                         raise ValueError(
                             f"Run too long in line: {total_length//xsize + 1}"
                         )
-                    data += (b"\xFF" * is_white_run or b"\x00") * run_length
+                    decoded_data += (b"\xFF" * is_white_run or b"\x00") * run_length
                     is_white_run = not is_white_run
                 total_length += line_length
             if buffer.read() != b"":
                 raise EOFError("There are extra data at the end of the file")
-            self.set_as_raw(bytes(data), rawmode="1;8")
+            self.set_as_raw(bytes(decoded_data), rawmode="1;8")
 
         def decode_rgba():
             COLOR_MASK = 0xFFFFF
-            data = bytearray()
+            decoded_data = bytearray()
 
             number_of_colors = self.args[0]
             palette = {
@@ -215,14 +217,14 @@ class DjvuRleDecoder(ImageFile.PyDecoder):
                         raise ValueError(
                             f"Run too long in line: {total_length//xsize + 1}"
                         )
-                    data += (
+                    decoded_data += (
                         b"\x00\x00\x00\x00" * is_transparent
                         or palette[color_index] + b"\xFF"
                     ) * run_length
                 total_length += line_length
             if buffer.read() != b"":
                 raise ValueError("There are extra data at the end of the file")
-            self.set_as_raw(bytes(data), rawmode="RGBA")
+            self.set_as_raw(bytes(decoded_data), rawmode="RGBA")
 
         if self.mode == "1":
             decode_bitonal()
@@ -243,7 +245,7 @@ class DjvuRleEncoder:
         self.mode = mode
         self.number_of_colors = b""
         self.palette = b""
-        self.decoded_data = bytearray()
+        self.encoded_data = bytearray()
 
     @property
     def pushes_fd(self):
@@ -262,14 +264,14 @@ class DjvuRleEncoder:
     def _make_bitonal_run(self, run_length):
         remaining = run_length
         while remaining > 16383:  # make max-sized runs until we get to the last run
-            self.decoded_data += b"\xFF\xFF\x00"
+            self.encoded_data += b"\xFF\xFF\x00"
             remaining -= 16383
         if remaining > 191:  # two-byte run
             first_byte = remaining >> 8 | 0xC0
             second_byte = remaining & 0xFF
-            self.decoded_data += bytes([first_byte, second_byte])
+            self.encoded_data += bytes([first_byte, second_byte])
         else:  # one-byte run
-            self.decoded_data += bytes([remaining])
+            self.encoded_data += bytes([remaining])
 
     def _encode_bitonal(self):
         for row_number in range(self.ysize):
@@ -293,11 +295,11 @@ class DjvuRleEncoder:
             color_index = self.palette[color]
         remaining = run_length
         while remaining > 0xFFFFF:  # make max-sized runs until we get to the last run
-            self.decoded_data += ((color_index << 20) + 0xFFFFF).to_bytes(
+            self.encoded_data += ((color_index << 20) + 0xFFFFF).to_bytes(
                 4, byteorder="big"
             )
             remaining -= 0xFFFFF
-        self.decoded_data += ((color_index << 20) + remaining).to_bytes(
+        self.encoded_data += ((color_index << 20) + remaining).to_bytes(
             4, byteorder="big"
         )
 
@@ -370,10 +372,10 @@ class DjvuRleEncoder:
 
         self.fd.write(self.number_of_colors)
         self.fd.write(self.palette)
-        self.fd.write(self.decoded_data)
+        self.fd.write(self.encoded_data)
         return 0, 0
 
-    def cleanup(self):
+    def cleanup(self):  # required to exist; not sure what it is supposed to do...
         pass
 
 
