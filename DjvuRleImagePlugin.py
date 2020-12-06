@@ -285,8 +285,9 @@ class DjvuRleEncoder:
                 previous_color ^= 0xFF  # toggle color
 
     def _make_color_run(self, color, run_length):
-        if len([color]) == 4 and color[3] == 0x00:  # check for transparency
-            # TODO: any transparency value makes a transparent pixel?
+        if (
+            isinstance(color, tuple) and len(color) == 4 and color[3] == 0x00
+        ):  # check for transparency
             color_index = 0xFFF
         else:
             color_index = self.palette[color]
