@@ -189,9 +189,7 @@ class DjvuRleDecoder(ImageFile.PyDecoder):
             decoded_data = bytearray()
 
             number_of_colors = self.args[0]
-            palette = {
-                n: b"" for n in range(number_of_colors)
-            }  # initialize palette
+            palette = {}
             for n in range(number_of_colors):  # load colors in palette
                 color = buffer.read(3)
                 if len(color) < 3:
@@ -269,9 +267,9 @@ class DjvuRleEncoder:
         if remaining > 191:  # two-byte run
             first_byte = remaining >> 8 | 0xC0
             second_byte = remaining & 0xFF
-            self.encoded_data += bytes([first_byte, second_byte])
+            self.encoded_data += bytes((first_byte, second_byte))
         else:  # one-byte run
-            self.encoded_data += bytes([remaining])
+            self.encoded_data += bytes((remaining,))
 
     def _encode_bitonal(self):
         for row_number in range(self.ysize):
@@ -340,8 +338,7 @@ class DjvuRleEncoder:
                 colors = [values for (_, values) in fetch_colors]
             else:
                 raise ValueError(f"Image contains more than 4080 colors")
-        self.palette = {color: index for (index, color) in enumerate(colors)}
-        # self.palette = dict(zip(colors, range(len(colors))))  # TODO: faster alternative?
+        self.palette = dict(zip(colors, range(len(colors))))
         self.number_of_colors = ("%d\n" % len(colors)).encode("ascii")
 
     def encode_to_pyfd(self):
@@ -351,7 +348,7 @@ class DjvuRleEncoder:
             self._make_palette()
             self._encode_color()
             self.palette = b"".join(
-                bytes([color]) * 3 for color in self.palette.keys()
+                bytes((color,)) * 3 for color in self.palette.keys()
             )  # convert the palette (dict) into a bytes object that can be written
         elif self.mode == "P":
             self._make_palette()
@@ -360,15 +357,11 @@ class DjvuRleEncoder:
         elif self.mode == "RGB":
             self._make_palette()
             self._encode_color()
-            self.palette = b"".join(
-                bytes([r, g, b]) for (r, g, b) in self.palette.keys()
-            )
+            self.palette = b"".join(bytes(color) for color in self.palette.keys())
         elif self.mode == "RGBA":
             self._make_palette()
             self._encode_color()
-            self.palette = b"".join(
-                bytes([r, g, b]) for (r, g, b, _) in self.palette.keys()
-            )
+            self.palette = b"".join(bytes(color)[0:3] for color in palette.keys())
 
         self.fd.write(self.number_of_colors)
         self.fd.write(self.palette)
