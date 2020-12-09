@@ -317,8 +317,8 @@ class DjvuRleEncoder:
                         self._make_color_run(previous_color, run_length)
                         previous_color = row[pos]  # update color
                         break
-                else:
-                    self._make_color_run(previous_color, run_length)  # make last run
+                else:  # make last run of this row
+                    self._make_color_run(previous_color, run_length)
 
     def _make_palette(self):
         if self.mode in ("L", "P"):  # inspired by Image.getcolors
@@ -330,7 +330,7 @@ class DjvuRleEncoder:
             # For "L" (grayscale) images, color 0 is black and color 255 is white,
             # so there is a one-to-one correspondence between the index
             # in the histogram and the gray value it corresponds to.
-            # For "P" (paletted) images, colors _are_ indices.
+            # For "P" (paletted) images, colors already are indices.
             h = self.im.histogram()
             colors = [color_index for (color_index, _) in enumerate(h) if _]
         else:
@@ -362,7 +362,7 @@ class DjvuRleEncoder:
         elif self.mode == "RGBA":
             self._make_palette()
             self._encode_color()
-            self.palette = b"".join(bytes(color)[0:3] for color in palette.keys())
+            self.palette = b"".join(bytes(color)[0:3] for color in self.palette.keys())
 
         self.fd.write(self.number_of_colors)
         self.fd.write(self.palette)
