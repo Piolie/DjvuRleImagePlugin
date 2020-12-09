@@ -251,13 +251,14 @@ class DjvuRleEncoder:
 
     def setimage(self, im, size):
         self.im = im
+        self.pixels = list(self.im)
         self.xsize, self.ysize = size[2:4]
 
     def setfd(self, fd):
         self.fd = fd
 
     def _get_row(self, row_number):
-        return [self.im.getpixel((x, row_number)) for x in range(self.xsize)]
+        return self.pixels[self.xsize * row_number : self.xsize * (row_number + 1)]
 
     def _make_bitonal_run(self, run_length):
         remaining = run_length
