@@ -221,7 +221,7 @@ class DjvuRleDecoder(ImageFile.PyDecoder):
                     ) * run_length
                 total_length += line_length
             if buffer.read() != b"":
-                raise ValueError("There are extra data at the end of the file")
+                raise EOFError("There are extra data at the end of the file")
             self.set_as_raw(bytes(decoded_data), rawmode="RGBA")
 
         if self.mode == "1":
