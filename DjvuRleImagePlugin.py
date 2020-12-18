@@ -139,95 +139,100 @@ class DjvuRleDecoder(ImageFile.PyDecoder):
 
     _pulls_fd = True  # TODO: experimental; gotta learn how to do it with buffer
 
+    def _decode_bitonal(self, buffer):
+        BITONAL_MASK = 0x3FFF
+        decoded_data = bytearray()  # much faster than: data = bytes()
+
+        total_length = 0
+        while total_length < self.size:
+            is_white_run = True  # each line starts with a white run
+            line_length = 0
+            while line_length < self.xsize:
+                first_byte = buffer.read(1)
+                if first_byte == b"":
+                    raise EOFError("Reached EOF while reading image data")
+                if first_byte > b"\xBF":  # two-byte run
+                    second_byte = buffer.read(1)
+                    if second_byte == b"":
+                        raise EOFError("Reached EOF while reading image data")
+                    run_length = (
+                        int.from_bytes(first_byte + second_byte, byteorder="big")
+                        & BITONAL_MASK  # make the two MSBs zero
+                    )
+                else:
+                    run_length = ord(first_byte)
+
+                line_length += run_length
+                if line_length > self.xsize:  # check line length
+                    raise ValueError(
+                        f"Run too long in line: {total_length//self.xsize + 1}"
+                    )
+                decoded_data += (b"\xFF" * is_white_run or b"\x00") * run_length
+                is_white_run = not is_white_run
+            total_length += line_length
+        if buffer.read() != b"":
+            raise EOFError("There are extra data at the end of the file")
+
+        return decoded_data
+
+    def _decode_color(self, buffer):
+        COLOR_MASK = 0xFFFFF
+        decoded_data = bytearray()
+
+        number_of_colors = self.args[0]
+        palette = {}
+        for n in range(number_of_colors):  # load colors in palette
+            color = buffer.read(3)
+            if len(color) < 3:
+                raise EOFError("Reached EOF while reading image palette")
+            palette[n] = color
+        total_length = 0
+        while total_length < self.size:
+            line_length = 0
+            while line_length < self.xsize:
+                raw_run = buffer.read(4)
+                if len(raw_run) < 4:
+                    raise EOFError("Reached EOF while reading image data")
+                run = int.from_bytes(raw_run, byteorder="big")
+                color_index = run >> 20  # upper twelve bits (32 - 20)
+                run_length = run & COLOR_MASK  # lower twenty bits
+                is_transparent = color_index == 0xFFF
+                if color_index > number_of_colors and not is_transparent:
+                    raise ValueError(
+                        f"Color index greater than {number_of_colors} in line {total_length//self.xsize + 1}"
+                    )
+                line_length += run_length
+                if line_length > self.xsize:
+                    raise ValueError(
+                        f"Run too long in line: {total_length//self.xsize + 1}"
+                    )
+                decoded_data += (
+                    b"\x00\x00\x00\x00" * is_transparent
+                    or palette[color_index] + b"\xFF"
+                ) * run_length
+            total_length += line_length
+        if buffer.read() != b"":
+            raise EOFError("There are extra data at the end of the file")
+
+        return decoded_data
+
     def decode(self, buffer):
-        xsize = self.state.xsize  # row length
-        ysize = self.state.ysize  # number of rows
-        size = xsize * ysize  # total number of pixels
+        self.xsize = self.state.xsize  # row length
+        self.ysize = self.state.ysize  # number of rows
+        self.size = self.xsize * self.ysize  # total number of pixels
         # if using buffer;
         # TODO: not sure about the performance impact of wrapping in BytesIO...
         # buffer = BytesIO(buffer)
         buffer = self.fd  # if using _pulls_fd
 
-        def decode_bitonal():
-            BITONAL_MASK = 0x3FFF
-            decoded_data = bytearray()  # much faster than: data = bytes()
-
-            total_length = 0
-            while total_length < size:
-                is_white_run = True  # each line starts with a white run
-                line_length = 0
-                while line_length < xsize:
-                    first_byte = buffer.read(1)
-                    if first_byte == b"":
-                        raise EOFError("Reached EOF while reading image data")
-                    if first_byte > b"\xBF":  # two-byte run
-                        second_byte = buffer.read(1)
-                        if second_byte == b"":
-                            raise EOFError("Reached EOF while reading image data")
-                        run_length = (
-                            int.from_bytes(first_byte + second_byte, byteorder="big")
-                            & BITONAL_MASK  # make the two MSBs zero
-                        )
-                    else:
-                        run_length = ord(first_byte)
-
-                    line_length += run_length
-                    if line_length > xsize:  # check line length
-                        raise ValueError(
-                            f"Run too long in line: {total_length//xsize + 1}"
-                        )
-                    decoded_data += (b"\xFF" * is_white_run or b"\x00") * run_length
-                    is_white_run = not is_white_run
-                total_length += line_length
-            if buffer.read() != b"":
-                raise EOFError("There are extra data at the end of the file")
-            self.set_as_raw(bytes(decoded_data), rawmode="1;8")
-
-        def decode_rgba():
-            COLOR_MASK = 0xFFFFF
-            decoded_data = bytearray()
-
-            number_of_colors = self.args[0]
-            palette = {}
-            for n in range(number_of_colors):  # load colors in palette
-                color = buffer.read(3)
-                if len(color) < 3:
-                    raise EOFError("Reached EOF while reading image palette")
-                palette[n] = color
-            total_length = 0
-            while total_length < size:
-                line_length = 0
-                while line_length < xsize:
-                    raw_run = buffer.read(4)
-                    if len(raw_run) < 4:
-                        raise EOFError("Reached EOF while reading image data")
-                    run = int.from_bytes(raw_run, byteorder="big")
-                    color_index = run >> 20  # upper twelve bits (32 - 20)
-                    run_length = run & COLOR_MASK  # lower twenty bits
-                    is_transparent = color_index == 0xFFF
-                    if color_index > number_of_colors and not is_transparent:
-                        raise ValueError(
-                            f"Color index greater than {number_of_colors} in line {total_length//xsize + 1}"
-                        )
-                    line_length += run_length
-                    if line_length > xsize:
-                        raise ValueError(
-                            f"Run too long in line: {total_length//xsize + 1}"
-                        )
-                    decoded_data += (
-                        b"\x00\x00\x00\x00" * is_transparent
-                        or palette[color_index] + b"\xFF"
-                    ) * run_length
-                total_length += line_length
-            if buffer.read() != b"":
-                raise EOFError("There are extra data at the end of the file")
-            self.set_as_raw(bytes(decoded_data), rawmode="RGBA")
-
         if self.mode == "1":
-            decode_bitonal()
+            rawmode = "1;8"
+            decoded_data = self._decode_bitonal(buffer)
         elif self.mode == "RGBA":
-            decode_rgba()
+            rawmode = "RGBA"
+            decoded_data = self._decode_color(buffer)
 
+        self.set_as_raw(bytes(decoded_data), rawmode)
         return -1, 0
 
 
