@@ -85,8 +85,7 @@ class DjvuRleImageFile(ImageFile.ImageFile):
             if c == b"#":
                 _ignore_line()
                 continue
-            else:
-                raise ValueError("Non-decimal-ASCII found in header")
+            raise ValueError("Non-decimal-ASCII found in header")
 
         return s
 
@@ -338,7 +337,7 @@ class DjvuRleEncoder:
             if fetch_colors:
                 colors = [values for (_, values) in fetch_colors]
             else:
-                raise ValueError(f"Image contains more than 4080 colors")
+                raise ValueError("Image contains more than 4080 colors")
         self.palette = dict(zip(colors, range(len(colors))))
         self.number_of_colors = ("%d\n" % len(colors)).encode("ascii")
 
