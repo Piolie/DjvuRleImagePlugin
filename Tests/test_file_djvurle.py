@@ -71,7 +71,7 @@ def test_partial_transparency(tmp_path):
 def test_header_with_comments(tmp_path):
     path = str(tmp_path / "temp.djvurle")
     with open(path, "wb") as f:
-        f.write(b"R4 #comment\n#comment\n12#comment\n8\n128#comment\n")
+        f.write(b"R4 #comment\n#comment\r12#comment\r8\n128#comment\n")
 
     Image.open(path)
 
