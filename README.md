@@ -9,7 +9,7 @@ import DjvuRleImagePlugin
 ```
 to register the plugin. You should now be able to use Pillow to open DjVu RLE files:
 ```python
-im = Image.open("image.djvurle")`
+im = Image.open("image.djvurle")
 ```
 Also, for opened images of the appropriate characteristics (see encoder notes below), you can save to DjVu RLE with
 ```python
@@ -29,7 +29,7 @@ There is no documentation in Pillow's docs as to how to implement an encoder in 
 ## Tests
 This repo includes several tests that cover all cases I could think of.
 
-Starting with `hopper.png`, all other PNG test files were generated using XnView or GIMP; DJVURLE test files using `pamtodjvurle`.
+Starting with `hopper.png`, all other PNG test files were generated using XnView or GIMP; DJVURLE test files using `pbmtodjvurle/pamtodjvurle`.
 
 ## Current status: stable BETA
 I have tested the decoder with several bitonal images generated with the DjVuLibre decoder (`ddjvu -format=rle out.djvu test.djvurle`). There is no way to generate color RLE files with the DjVuLibre tools, so I have used Netpbm's `pbmtodjvurle` and `pamtodjvurle` to generate DjVu RLE images and the decoder has had no trouble handling any of those files.
