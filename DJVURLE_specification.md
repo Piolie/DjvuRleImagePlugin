@@ -16,10 +16,10 @@ The palette is followed by a collection of four bytes integers (most significant
 
 # Implementation details:
 Having such a succinct specification leaves some details open to interpretation. Following the [Netpbm formats](http://netpbm.sourceforge.net/doc/#formats) specifications, this implementation makes the following assumptions:
-- Assumes comment lines start with "#" and end with "LF" or "CR".
-- Assumes comment lines can start in the middle of an item.
-- Since both formats state that "the last number is followed by exactly one character which _usually_ is a linefeed character", assumes _that_ last character is always a whitespace.
-- Assumes the color RLE format also allows runs of length zero.
+- Comment strings start with "#" and end with "LF" or "CR" (or EOF).
+- Comment strings can start in the middle of an item.
+- Since both formats state that "the last number is followed by exactly one character which _usually_ is a linefeed character", _that_ last character is always a whitespace.
+- The color RLE format also allows runs of length zero.
 
 # Complementary specifications
 
