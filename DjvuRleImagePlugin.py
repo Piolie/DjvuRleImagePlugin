@@ -44,7 +44,7 @@ class DjvuRleImageFile(ImageFile.ImageFile):
     format = "DJVURLE"
     format_description = "DjVu RLE image"
 
-    def _read_token(self, s=b""):
+    def _read_token(self, token=b""):
         """
         Read one token and detect errors in format.
         """
@@ -52,52 +52,48 @@ class DjvuRleImageFile(ImageFile.ImageFile):
         def _is_decimal_ascii(c):  # verifies ASCII decimal
             return b"\x2F" < c < b"\x3A"
 
-        def _ignore_line():  # ignores line; line ends with CR _xor_ LF
+        def _ignore_comment():  # ignores rest of the line; stops at CR, LF or EOF
             while True:
                 c = self.fp.read(1)
-                if c == b"":  # reached EOF
-                    raise EOFError("Reached EOF while reading header")
                 if c in b"\r\n":
                     break
 
         while True:  # read until non-whitespace is found
             c = self.fp.read(1)
-            if c == b"":  # reached EOF
-                raise EOFError("Reached EOF while reading header")
             if _is_decimal_ascii(c):  # found what we were looking for
                 break
-            if c == b"#":  # found comment line, ignore it
-                _ignore_line()
+            if c == b"#":  # found comment, ignore it
+                _ignore_comment()
                 continue
             if c in WHITESPACE:  # found whitespace, ignore it
+                if c == b"":  # reached EOF
+                    raise EOFError("Reached EOF while reading header")
                 continue
-            raise ValueError("Non-decimal-ASCII found in header")
+            raise SyntaxError("Non-decimal-ASCII found in header")
 
-        s = s + c
+        token += c
 
         while True:  # read until next whitespace
             c = self.fp.read(1)
             if _is_decimal_ascii(c):  # append decimal
-                s = s + c
+                token += c
+                continue
+            if c == b"#":
+                _ignore_comment()
                 continue
             if c in WHITESPACE:  # token ended
                 break
-            if c == b"#":
-                _ignore_line()
-                continue
-            raise ValueError("Non-decimal-ASCII found in header")
+            raise SyntaxError("Non-decimal-ASCII found in header")
 
-        return s
+        return token
 
     def _open(self):
         """
         Load image parameters.
         """
         # read magic number
-        s = self.fp.read(1)
-        if s != b"R":  # TODO: redundant? (already have _accept)
-            raise ValueError("Not a DJVURLE file")
-        magic_number = self._read_token(s)
+        R = self.fp.read(1)
+        magic_number = self._read_token(R)
         self.mode = MODES[magic_number]
 
         self.custom_mimetype = {
@@ -112,12 +108,12 @@ class DjvuRleImageFile(ImageFile.ImageFile):
             elif ix == 1:  # token is the y size
                 ysize = token
                 if self.mode == "1":
-                    number_of_colors = 0  # bitonal decoder ignores this value
+                    number_of_colors = None  # bitonal decoder ignores this value
                     break
             elif ix == 2:  # token is the number of colors
-                if token > 4080:  # check palette size
-                    raise ValueError(
-                        f"Too many colors: {token}; reduce to 4080 or less"
+                if not (0 < token < 4081):  # check palette size
+                    raise SyntaxError(
+                        f"Wrong number of colors: {token}; must be between 1 and 4080"
                     )
                 number_of_colors = token
 
