@@ -73,7 +73,8 @@ def test_header_with_comments(tmp_path):
     with open(path, "wb") as f:
         f.write(b"R4 #comment\n#comment\r12#comment\r8\n128#comment\n")
 
-    Image.open(path)
+    with Image.open(path) as im:
+        assert im.size == (128, 128)
 
 
 def test_nondecimal_header(tmp_path):
