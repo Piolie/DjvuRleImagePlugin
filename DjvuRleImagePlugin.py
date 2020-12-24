@@ -18,7 +18,7 @@ A Pillow plugin to decode and encode DjVu RLE images
 as specified in the DjVuLibre docs.
 """
 
-# from io import BytesIO
+from io import BytesIO
 from PIL import Image, ImageFile
 
 #
@@ -137,29 +137,44 @@ class DjvuRleImageFile(ImageFile.ImageFile):
         ]
 
 
+#
+# --------------------------------------------------------------------
 class DjvuRleDecoder(ImageFile.PyDecoder):
     """
     Class to decode DjVu RLE images.
     """
 
-    _pulls_fd = True  # TODO: experimental; gotta learn how to do it with buffer
+    def setimage(self, im, extents=None):
+        super().setimage(im)
+
+        self.xsize = self.state.xsize  # row length
+        self.ysize = self.state.ysize  # number of rows
+        self.size = self.xsize * self.ysize  # total number of pixels
+
+        self.is_white_run = True
+        self.line_length = 0
+        self.total_length = 0
+        if self.mode == "RGBA":
+            self.number_of_colors = self.args[0]
+            self.palette = {}
+        self.decoded_data = bytearray()  # much faster than: data = bytes()
 
     def _decode_bitonal(self, buffer):
         BITONAL_MASK = 0x3FFF
-        decoded_data = bytearray()  # much faster than: data = bytes()
+        bytes_read = 0
 
-        total_length = 0
-        while total_length < self.size:
-            is_white_run = True  # each line starts with a white run
-            line_length = 0
-            while line_length < self.xsize:
+        while self.total_length < self.size:
+            while self.line_length < self.xsize:
                 first_byte = buffer.read(1)
                 if first_byte == b"":
-                    raise OSError("Reached EOF while reading image data")
+                    return bytes_read
+                bytes_read += 1
                 if first_byte > b"\xBF":  # two-byte run
                     second_byte = buffer.read(1)
                     if second_byte == b"":
-                        raise OSError("Reached EOF while reading image data")
+                        bytes_read -= 1  # "unread" first byte
+                        return bytes_read
+                    bytes_read += 1
                     run_length = (
                         int.from_bytes(first_byte + second_byte, byteorder="big")
                         & BITONAL_MASK  # make the two MSBs zero
@@ -167,16 +182,21 @@ class DjvuRleDecoder(ImageFile.PyDecoder):
                 else:
                     run_length = ord(first_byte)
 
-                line_length += run_length
-                if line_length > self.xsize:  # check line length
+                self.line_length += run_length
+                if self.line_length > self.xsize:  # check line length
                     raise ValueError(
-                        f"Run too long in line: {total_length//self.xsize + 1}"
+                        f"Run too long in line: {self.total_length//self.xsize + 1}"
                     )
-                decoded_data += (b"\xFF" * is_white_run or b"\x00") * run_length
-                is_white_run = not is_white_run
-            total_length += line_length
+                self.decoded_data += (
+                    b"\xFF" * self.is_white_run or b"\x00"
+                ) * run_length
+                self.is_white_run = not self.is_white_run  # toggle run color
+            # completed one line; reset counters
+            self.total_length += self.line_length
+            self.line_length = 0
+            self.is_white_run = True  # each line starts with a white run
 
-        return decoded_data
+        return -1
 
     def _decode_color(self, buffer):
         COLOR_MASK = 0xFFFFF
@@ -218,17 +238,14 @@ class DjvuRleDecoder(ImageFile.PyDecoder):
         return decoded_data
 
     def decode(self, buffer):
-        self.xsize = self.state.xsize  # row length
-        self.ysize = self.state.ysize  # number of rows
-        self.size = self.xsize * self.ysize  # total number of pixels
-        # if using buffer;
-        # TODO: not sure about the performance impact of wrapping in BytesIO...
-        # buffer = BytesIO(buffer)
-        buffer = self.fd  # if using _pulls_fd
+        buffer = BytesIO(buffer)
 
         if self.mode == "1":
-            rawmode = "1;8"
-            decoded_data = self._decode_bitonal(buffer)
+            bytes_read = self._decode_bitonal(buffer)
+            if bytes_read != -1:  # not finished decoding
+                return bytes_read, -1
+            else:
+                rawmode = "1;8"
         elif self.mode == "RGBA":
             rawmode = "RGBA"
             decoded_data = self._decode_color(buffer)
@@ -236,10 +253,12 @@ class DjvuRleDecoder(ImageFile.PyDecoder):
         if buffer.read() != b"":  # check for extra data
             raise OSError("There are extra data at the end of the file")
 
-        self.set_as_raw(bytes(decoded_data), rawmode)
+        self.set_as_raw(bytes(self.decoded_data), rawmode)
         return -1, 0
 
 
+#
+# --------------------------------------------------------------------
 class DjvuRleEncoder:
     """
     DjVu RLE encoder class.
@@ -381,6 +400,8 @@ class DjvuRleEncoder:
         pass
 
 
+#
+# --------------------------------------------------------------------
 def _save(im, fp, filename):
     if im.mode == "1":
         magic_number = b"R4"
