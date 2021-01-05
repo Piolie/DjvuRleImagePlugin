@@ -156,6 +156,7 @@ class DjvuRleDecoder(ImageFile.PyDecoder):
         self.total_length = 0
         if self.mode == "RGBA":
             self.number_of_colors = self.args[0]
+            self.colors_loaded = 0
             self.palette = {}
         self.decoded_data = bytearray()  # much faster than: data = bytes()
 
@@ -200,42 +201,44 @@ class DjvuRleDecoder(ImageFile.PyDecoder):
 
     def _decode_color(self, buffer):
         COLOR_MASK = 0xFFFFF
-        decoded_data = bytearray()
+        bytes_read = 0
 
-        number_of_colors = self.args[0]
-        palette = {}
-        for n in range(number_of_colors):  # load colors in palette
+        while self.colors_loaded < self.number_of_colors:  # load colors in palette
             color = buffer.read(3)
             if len(color) < 3:
-                raise OSError("Reached EOF while reading image palette")
-            palette[n] = color
-        total_length = 0
-        while total_length < self.size:
-            line_length = 0
-            while line_length < self.xsize:
+                return bytes_read
+            bytes_read += 3
+            self.palette[self.colors_loaded] = color
+            self.colors_loaded += 1
+
+        while self.total_length < self.size:
+            while self.line_length < self.xsize:
                 raw_run = buffer.read(4)
                 if len(raw_run) < 4:
-                    raise OSError("Reached EOF while reading image data")
+                    return bytes_read
+                bytes_read += 4
                 run = int.from_bytes(raw_run, byteorder="big")
                 color_index = run >> 20  # upper twelve bits (32 - 20)
                 run_length = run & COLOR_MASK  # lower twenty bits
                 is_transparent = color_index == 0xFFF
-                if color_index > number_of_colors and not is_transparent:
+                if color_index > self.number_of_colors and not is_transparent:
                     raise ValueError(
-                        f"Color index greater than {number_of_colors} in line {total_length//self.xsize + 1}"
+                        f"Color index greater than {self.number_of_colors} in line {self.total_length//self.xsize + 1}"
                     )
-                line_length += run_length
-                if line_length > self.xsize:
+                self.line_length += run_length
+                if self.line_length > self.xsize:
                     raise ValueError(
-                        f"Run too long in line: {total_length//self.xsize + 1}"
+                        f"Run too long in line: {self.total_length//self.xsize + 1}"
                     )
-                decoded_data += (
+                self.decoded_data += (
                     b"\x00\x00\x00\x00" * is_transparent
-                    or palette[color_index] + b"\xFF"
+                    or self.palette[color_index] + b"\xFF"
                 ) * run_length
-            total_length += line_length
+            # completed one line; reset counters
+            self.total_length += self.line_length
+            self.line_length = 0
 
-        return decoded_data
+        return -1
 
     def decode(self, buffer):
         buffer = BytesIO(buffer)
@@ -247,8 +250,11 @@ class DjvuRleDecoder(ImageFile.PyDecoder):
             else:
                 rawmode = "1;8"
         elif self.mode == "RGBA":
-            rawmode = "RGBA"
-            decoded_data = self._decode_color(buffer)
+            bytes_read = self._decode_color(buffer)
+            if bytes_read != -1:
+                return bytes_read, -1
+            else:
+                rawmode = "RGBA"
 
         if buffer.read() != b"":  # check for extra data
             raise OSError("There are extra data at the end of the file")
@@ -423,3 +429,14 @@ Image.register_mime(DjvuRleImageFile.format, "image/x-djvurle-anymap")
 Image.register_decoder(DjvuRleImageFile.format, DjvuRleDecoder)
 Image.register_encoder(DjvuRleImageFile.format, DjvuRleEncoder)
 Image.register_save(DjvuRleImageFile.format, _save)
+
+if __name__ == "__main__":
+    from PIL import Image
+
+    # ima = Image.open("Tests/images/hopper_1.djvurle")
+    ima = Image.open("test2.djvurle")
+    ima.decodermaxblock = 191
+    ima.load()
+
+    # ima = Image.open("test2.tif")
+    # ima.save('test2.djvurle')
