@@ -1,7 +1,8 @@
 import pytest
+from io import BytesIO
 from PIL import Image, UnidentifiedImageError
-import sys
 
+import sys
 sys.path.insert(0, "..")
 import DjvuRleImagePlugin  # noqa: E402
 
@@ -33,6 +34,10 @@ def test_sanity():
         assert im.size == (128, 128)
         assert im.format, "DJVURLE"
         assert im.get_format_mimetype() == "image/x-djvurle-pixmap"
+
+def test_bad_magic():
+    with pytest.raises(SyntaxError):
+        DjvuRleImagePlugin.DjvuRleImageFile(fp=BytesIO(b'R45'))
 
 
 def test_bitonal_modes(tmp_path):
@@ -91,7 +96,7 @@ def test_truncated_header(tmp_path):
     with open(path, "wb") as f:
         f.write(b"R4\n128")
 
-    with pytest.raises(UnidentifiedImageError):
+    with pytest.raises(ValueError):
         Image.open(path)
 
 
