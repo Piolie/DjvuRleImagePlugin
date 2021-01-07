@@ -121,7 +121,7 @@ def test_truncated_palette(tmp_path):
     with open(path, "wb") as f:
         f.write(b"R6\n128\n128\n64\n\x00\x00\x00")
 
-    with pytest.raises(EOFError):
+    with pytest.raises(OSError):
         Image.open(path).load()
 
 
@@ -130,7 +130,7 @@ def test_truncated_data_bitonal(tmp_path):
     with open(path, "wb") as f:
         f.write(b"R4\n128\n128\n\x00")
 
-    with pytest.raises(EOFError):
+    with pytest.raises(OSError):
         Image.open(path).load()
 
 
@@ -139,7 +139,7 @@ def test_truncated_data_color(tmp_path):
     with open(path, "wb") as f:
         f.write(b"R6\n128\n128\n1\n\x00\x00\x00\xFF")
 
-    with pytest.raises(EOFError):
+    with pytest.raises(OSError):
         Image.open(path).load()
 
 
@@ -175,7 +175,7 @@ def test_extra_data_bitonal(tmp_path):
     with open(path, "wb") as f:
         f.write(b"R4\n1\n1\n\x01\x00")
 
-    with pytest.raises(EOFError):
+    with pytest.raises(OSError):
         Image.open(path).load()
 
 
@@ -184,5 +184,5 @@ def test_extra_data_color(tmp_path):
     with open(path, "wb") as f:
         f.write(b"R6\n1\n1\n1\n\x00\x00\x00\x00\x00\x00\x01\x00")
 
-    with pytest.raises(EOFError):
+    with pytest.raises(OSError):
         Image.open(path).load()

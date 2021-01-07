@@ -155,11 +155,11 @@ class DjvuRleDecoder(ImageFile.PyDecoder):
             while line_length < self.xsize:
                 first_byte = buffer.read(1)
                 if first_byte == b"":
-                    raise EOFError("Reached EOF while reading image data")
+                    raise OSError("Reached EOF while reading image data")
                 if first_byte > b"\xBF":  # two-byte run
                     second_byte = buffer.read(1)
                     if second_byte == b"":
-                        raise EOFError("Reached EOF while reading image data")
+                        raise OSError("Reached EOF while reading image data")
                     run_length = (
                         int.from_bytes(first_byte + second_byte, byteorder="big")
                         & BITONAL_MASK  # make the two MSBs zero
@@ -176,7 +176,7 @@ class DjvuRleDecoder(ImageFile.PyDecoder):
                 is_white_run = not is_white_run
             total_length += line_length
         if buffer.read() != b"":
-            raise EOFError("There are extra data at the end of the file")
+            raise OSError("There are extra data at the end of the file")
 
         return decoded_data
 
@@ -189,7 +189,7 @@ class DjvuRleDecoder(ImageFile.PyDecoder):
         for n in range(number_of_colors):  # load colors in palette
             color = buffer.read(3)
             if len(color) < 3:
-                raise EOFError("Reached EOF while reading image palette")
+                raise OSError("Reached EOF while reading image palette")
             palette[n] = color
         total_length = 0
         while total_length < self.size:
@@ -197,7 +197,7 @@ class DjvuRleDecoder(ImageFile.PyDecoder):
             while line_length < self.xsize:
                 raw_run = buffer.read(4)
                 if len(raw_run) < 4:
-                    raise EOFError("Reached EOF while reading image data")
+                    raise OSError("Reached EOF while reading image data")
                 run = int.from_bytes(raw_run, byteorder="big")
                 color_index = run >> 20  # upper twelve bits (32 - 20)
                 run_length = run & COLOR_MASK  # lower twenty bits
@@ -217,7 +217,7 @@ class DjvuRleDecoder(ImageFile.PyDecoder):
                 ) * run_length
             total_length += line_length
         if buffer.read() != b"":
-            raise EOFError("There are extra data at the end of the file")
+            raise OSError("There are extra data at the end of the file")
 
         return decoded_data
 
