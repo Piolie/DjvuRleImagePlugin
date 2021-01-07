@@ -44,6 +44,16 @@ class DjvuRleImageFile(ImageFile.ImageFile):
     format = "DJVURLE"
     format_description = "DjVu RLE image"
 
+    def _read_magic(self, s=b""):
+        while True:  # read until next whitespace
+            c = self.fp.read(1)
+            if c in WHITESPACE:
+                break
+            s = s + c
+            if len(s) > 2:  # exceeded max magic number length
+                break
+        return s
+
     def _read_token(self, token=b""):
         """
         Read one token and detect errors in format.
@@ -92,9 +102,11 @@ class DjvuRleImageFile(ImageFile.ImageFile):
         Load image parameters.
         """
         # read magic number
-        R = self.fp.read(1)
-        magic_number = self._read_token(R)
-        self.mode = MODES[magic_number]
+        magic_number = self._read_magic()
+        try:
+            self.mode = MODES[magic_number]
+        except KeyError:
+            raise SyntaxError("Not a DjVu RLE file") from None
 
         self.custom_mimetype = {
             b"R4": "image/x-djvurle-bitmap",
