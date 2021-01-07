@@ -56,45 +56,36 @@ class DjvuRleImageFile(ImageFile.ImageFile):
 
     def _read_token(self, token=b""):
         """
-        Read one token and detect errors in format.
+        Read one token, ignoring comments.
         """
 
-        def _is_decimal_ascii(c):  # verifies ASCII decimal
-            return b"\x2F" < c < b"\x3A"
-
         def _ignore_comment():  # ignores rest of the line; stops at CR, LF or EOF
-            while True:
-                c = self.fp.read(1)
-                if c in b"\r\n":
-                    break
+            while self.fp.read(1) not in b"\r\n":
+                pass
 
         while True:  # read until non-whitespace is found
             c = self.fp.read(1)
-            if _is_decimal_ascii(c):  # found what we were looking for
-                break
             if c == b"#":  # found comment, ignore it
                 _ignore_comment()
                 continue
             if c in WHITESPACE:  # found whitespace, ignore it
                 if c == b"":  # reached EOF
-                    raise EOFError("Reached EOF while reading header")
+                    raise ValueError("Reached EOF while reading header")
                 continue
-            raise SyntaxError("Non-decimal-ASCII found in header")
+            break
 
         token += c
 
         while True:  # read until next whitespace
             c = self.fp.read(1)
-            if _is_decimal_ascii(c):  # append decimal
-                token += c
-                continue
             if c == b"#":
                 _ignore_comment()
                 continue
             if c in WHITESPACE:  # token ended
                 break
-            raise SyntaxError("Non-decimal-ASCII found in header")
-
+            token += c
+            if len(token) > 9:
+                raise ValueError(f"Token too long: {token}")
         return token
 
     def _open(self):
@@ -114,7 +105,13 @@ class DjvuRleImageFile(ImageFile.ImageFile):
         }[magic_number]
 
         for ix in range(3):
-            token = int(self._read_token())
+            token = self._read_token()
+            try:  # check token sanity
+                token = int(token)
+            except ValueError:
+                raise ValueError(
+                    f"Non-decimal-ASCII found in header: {token}"
+                ) from None
             if ix == 0:  # token is the x size
                 xsize = token
             elif ix == 1:  # token is the y size
@@ -124,7 +121,7 @@ class DjvuRleImageFile(ImageFile.ImageFile):
                     break
             elif ix == 2:  # token is the number of colors
                 if not (0 < token < 4081):  # check palette size
-                    raise SyntaxError(
+                    raise ValueError(
                         f"Wrong number of colors: {token}; must be between 1 and 4080"
                     )
                 number_of_colors = token
