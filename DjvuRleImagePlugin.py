@@ -175,8 +175,6 @@ class DjvuRleDecoder(ImageFile.PyDecoder):
                 decoded_data += (b"\xFF" * is_white_run or b"\x00") * run_length
                 is_white_run = not is_white_run
             total_length += line_length
-        if buffer.read() != b"":
-            raise OSError("There are extra data at the end of the file")
 
         return decoded_data
 
@@ -216,8 +214,6 @@ class DjvuRleDecoder(ImageFile.PyDecoder):
                     or palette[color_index] + b"\xFF"
                 ) * run_length
             total_length += line_length
-        if buffer.read() != b"":
-            raise OSError("There are extra data at the end of the file")
 
         return decoded_data
 
@@ -236,6 +232,9 @@ class DjvuRleDecoder(ImageFile.PyDecoder):
         elif self.mode == "RGBA":
             rawmode = "RGBA"
             decoded_data = self._decode_color(buffer)
+
+        if buffer.read() != b"":  # check for extra data
+            raise OSError("There are extra data at the end of the file")
 
         self.set_as_raw(bytes(decoded_data), rawmode)
         return -1, 0
