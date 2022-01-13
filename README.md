@@ -2,7 +2,12 @@
 This is a simple Pillow plugin for the DjVu RLE image format as defined in the ([DjVuLibre docs](http://djvu.sourceforge.net/doc/man/csepdjvu.html)). It is written in pure Python 3.
 
 ## Usage
-Simply place `DjvuRleImagePlugin.py` where Python can find it and do
+Simply install the plugin via
+```
+pip install DjvuRleImagePlugin
+```
+
+(or place `DjvuRleImagePlugin.py` where Python can find it) and do
 ```python
 from PIL import Image
 import DjvuRleImagePlugin
