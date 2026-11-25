@@ -128,7 +128,7 @@ class DjvuRleImageFile(ImageFile.ImageFile):
 
         self._size = xsize, ysize
         self.tile = [
-            (
+            ImageFile._Tile(
                 "DJVURLE",  # decoder
                 (0, 0) + self._size,  # region: whole image
                 self.fp.tell(),  # offset to image data
@@ -390,7 +390,7 @@ def _save(im, fp, filename):
         raise OSError(f"Cannot write mode {im.mode} as DJVURLE")
     fp.write(magic_number)
     fp.write(("\n%d %d\n" % im.size).encode("ascii"))
-    ImageFile._save(im, fp, [("DJVURLE", (0, 0) + im.size, 0, (im.mode))])
+    ImageFile._save(im, fp, [ImageFile._Tile("DJVURLE", (0, 0) + im.size, 0, (im.mode))])
 
 
 # --------------------------------------------------------------------
