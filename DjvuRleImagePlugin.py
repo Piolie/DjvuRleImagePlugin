@@ -95,7 +95,7 @@ class DjvuRleImageFile(ImageFile.ImageFile):
         # read magic number
         magic_number = self._read_magic()
         try:
-            self.mode = MODES[magic_number]
+            self._mode = MODES[magic_number]
         except KeyError:
             raise SyntaxError("Not a DjVu RLE file") from None
 
